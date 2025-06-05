@@ -7,7 +7,7 @@
 // Define ColorEquals if not available in your raylib version
 #ifndef ColorEquals
 inline bool ColorEquals(Color a, Color b) {
-    return a.r == b.r && a.g == b.g && a.b == b.a && a.a == b.a;
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 #endif
     // Initialization
@@ -79,11 +79,7 @@ public:
         if (x + dx < 0 || x + dx >= levelW || y + dy < 0 || y + dy >= levelH) {
             return; // Prevent moving out of bounds
         }
-        // Check if the next cell is not a wall (255)
-        auto col = levelData[y + dy][x + dx];
-        if (ColorEquals(col, WHITE)) {
-            return; // Prevent moving into a wall
-        }
+        
         x += dx;
         y += dy;
     }
@@ -118,22 +114,18 @@ drawCone(const Player& player) {
                 DrawPixel(i, j, colorValue);
             }
 
-            //draw the level area around the player
-            if (i >= startX - 50 && i <= startX + 50 && j >= startY - 50 && j <= startY + 50) {
-                DrawPixel(i, j, levelData[j * levelH / screenHeight][i * levelW / screenWidth]);
+            //draw the level area around the player in a circle
+            //of radius 100 pixels
+            if (distance < 30) {
+                Color colorValue = levelData[j * levelH / screenHeight][i * levelW / screenWidth];
+                DrawPixel(i, j, colorValue);
             }
         }
     }
 }
 void
 drawLevel(int screenWidth, int screenHeight) {
-    //one cell is 10x10 pixels
-    for (int y = 0; y < levelH; ++y) {
-        for (int x = 0; x < levelW; ++x) {
-            Color colorValue = levelData[y][x];
-            DrawRectangle(x * 10, y * 10, 10, 10, colorValue);
-        }
-    }
+   
 }
 
 int main(void)
@@ -169,10 +161,11 @@ int main(void)
             player.move(0, 1);
         }
         //drawLevel(screenWidth, screenHeight);
+        
+        drawLevel(screenWidth, screenHeight);
+        
         drawCone(player);
         player.draw();
-
-
         EndDrawing();
     }
     CloseWindow(); // Close window and OpenGL context
