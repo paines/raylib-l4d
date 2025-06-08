@@ -3,6 +3,7 @@
 #include <raylib.h>
 #include <stdbool.h>
 #include <iostream>
+#include <vector>
 
 using namespace std;
 
@@ -39,8 +40,13 @@ generateLevelWithWalls() {
 
 class Player {
 public:
-    int x, y;
-    Player(int startX, int startY) : x(startX), y(startY) {}
+    int x, y, health;
+    float angle; // Angle in radians, used for shooting direction
+    Player(int startX, int startY) : x(startX), y(startY), health(100)
+    {
+        //initialize angle facing upwards (270 degrees in radians)
+        angle = 270.0f * (PI / 180.0f); // 270 degrees in radians
+    }
     void move(int dx, int dy) {
         // Check bounds to prevent moving out of the level
         if (x + dx < 0 || x + dx >= levelW || y + dy < 0 || y + dy >= levelH) {
@@ -53,6 +59,7 @@ public:
     void draw() const {
         DrawRectangle(x * 10, y * 10, 10, 10, RED);
     }
+    
 };
 
 class Monster {
@@ -75,20 +82,43 @@ public:
     }
 };
 
+void
+shoot(const Player & player) {
+    //print the player's look angle in degrees
+    float angleInDegrees = player.angle * (180.0f / PI);
+    //draw a line from the players position to the player's look angle
+    //of length 100 pixels
+    int startX = player.x * 10 + 5;
+    int startY = player.y * 10 + 5;
+    int endX = startX + cosf(player.angle) * 100;
+    int endY = startY + sinf(player.angle) * 100;
+    DrawLine(startX, startY, endX, endY, BLACK);
+}
+
 
 //our draw function which draws a cone from the player to the mouse position
 //as well as the player and the monster
 void
-draw(const Player& player, const Monster& monster) {
+draw(Player& player, const vector<Monster>& monsters) {
     // Cone origin is player's center
     int startX = player.x * 10 + 5;
     int startY = player.y * 10 + 5;
     int mouseX = GetMouseX();
     int mouseY = GetMouseY();
+
+
+
     // Angle starts at 270 degrees (downwards), then rotates towards mouse
     float baseAngle = 270.0f * (PI / 180.0f); // 270 degrees in radians
     float angleToMouse = atan2f(mouseY - startY, mouseX - startX);
-    float angle = baseAngle + angleToMouse;
+    player.angle = baseAngle + angleToMouse;
+    if (player.angle < 0) {
+        player.angle += 2 * PI; // Normalize angle to [0, 2*PI]
+    }
+    if (player.angle >= 2 * PI) {
+        player.angle -= 2 * PI; // Normalize angle to [0, 2*PI]
+    }
+    // Draw player
     int length = 500;
     float fov = 30.0f * (PI / 180.0f);
     for (int i = 0; i < screenWidth; i++) {
@@ -97,7 +127,7 @@ draw(const Player& player, const Monster& monster) {
             float dy = j - startY;
             float distance = sqrtf(dx * dx + dy * dy);
             float angleToPixel = atan2f(dy, dx);
-            float delta = angleToPixel - angle;
+            float delta = angleToPixel - player.angle;
             while (delta > PI) delta -= 2 * PI;
             while (delta < -PI) delta += 2 * PI;
             if (distance < length && fabsf(delta) < fov / 2.0f) {
@@ -112,11 +142,13 @@ draw(const Player& player, const Monster& monster) {
                 DrawPixel(i, j, colorValue);
             }
 
-            //if the monster is inside the cone, draw it
-            if (monster.x * 10 <= i && i <= (monster.x + 1) * 10 &&
-                monster.y * 10 <= j && j <= (monster.y + 1) * 10) {
-                if (distance < length && fabsf(delta) < fov / 2.0f) {
-                    DrawRectangle(monster.x * 10, monster.y * 10, 10, 10, BLUE);
+            //if the monsters are inside the cone, draw it
+            for (const auto& monster : monsters) {
+                if (monster.x * 10 <= i && i <= (monster.x + 1) * 10 &&
+                    monster.y * 10 <= j && j <= (monster.y + 1) * 10) {
+                    if (distance < length && fabsf(delta) < fov / 2.0f) {
+                        DrawRectangle(monster.x * 10, monster.y * 10, 10, 10, BLUE);
+                    }
                 }
             }
         }
@@ -131,7 +163,12 @@ int main(void)
     SetTargetFPS(60); // Set desired framerate (frames-per-second)
     //--------------------------------------------------------------------------------------
     Player player(screenWidth / 2 / 10, screenHeight / 2 / 10); // Initialize player at center of the screen
-    Monster monster(rand() % levelW, rand() % levelH); // Initialize monster at random position within level    
+
+    //vector of 10 monsters
+    vector<Monster> monsters;
+    for (int i = 0; i < 10; ++i) {
+        monsters.emplace_back(rand() % levelW, rand() % levelH); // Initialize monsters at random positions within level
+    }
 
     // Main game loop
     while (!WindowShouldClose()) // Detect window close button or ESC key
@@ -151,12 +188,16 @@ int main(void)
         if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
             player.move(0, 1);
         }
+        
 
         //set the window title to the player's position
-        string title = "Player Position: (" + to_string(player.x) + ", " + to_string(player.y) + ")";
+        string title = "Player Position: (" + to_string(player.x) + ", " + to_string(player.y) + ") - Health: " + to_string(player.health);
+        
         SetWindowTitle(title.c_str());
         
-        draw(player, monster); // Draw evrything
+        draw(player, monsters); // Draw evrything
+        shoot(player);
+
 
         //count seconds since the start of the game
         static float seconds = 0.0f;
@@ -164,22 +205,34 @@ int main(void)
         if (seconds >= 0.3f) {
             seconds = 0.0f; // Reset seconds
             
-            //move the monster towards the player
-            int dx = player.x - monster.x;
-            int dy = player.y - monster.y;
-            if (dx > 0) {
-                monster.move(1, 0);
-            } else if (dx < 0) {
-                monster.move(-1, 0);
+            //move the monsters towards the player
+            for(auto& monster : monsters) {
+                int dx = player.x - monster.x;
+                int dy = player.y - monster.y;
+                if (dx > 0) {
+                    monster.move(1, 0);
+                } else if (dx < 0) {
+                    monster.move(-1, 0);
+                }
+                if (dy > 0) {
+                    monster.move(0, 1);
+                } else if (dy < 0) {
+                    monster.move(0, -1);
+                }
             }
-            if (dy > 0) {
-                monster.move(0, 1);
-            } else if (dy < 0) {
-                monster.move(0, -1);
-            }
-            
         }
-        
+
+        // if the monster is at player's position
+        // decrease player's health for 10
+        for (const auto& monster : monsters) {
+            if (monster.x == player.x && monster.y == player.y) {
+                player.health -= 10;
+            }
+        }
+        if (player.health <= 0) {
+            DrawText("Game Over", screenWidth / 2 - 50, screenHeight / 2 - 20, 20, RED);
+        } 
+
         EndDrawing();
     }
     CloseWindow(); // Close window and OpenGL context
